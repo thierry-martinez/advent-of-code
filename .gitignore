@@ -1,0 +1,8 @@
+*~
+_build/
+target/
+Cargo.lock
+2023/haskell/ac??
+*.hi
+*.o
+input
