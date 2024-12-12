@@ -6,3 +6,4 @@ Cargo.lock
 *.hi
 *.o
 input
+example*
