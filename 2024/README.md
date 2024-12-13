@@ -3,3 +3,6 @@
 ```
 python day01/day01.py <input
 ```
+
+Coq/Rocq formalizations:
+- [Day 1](day01/day01.v)
