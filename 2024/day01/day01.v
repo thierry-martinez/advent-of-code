@@ -53,7 +53,7 @@ Definition distance (a b: nat): nat :=
 
 (** Note the distinction between [a < b], which is the _property_ (of
 type [Prop]), that [a] is stricty less than [b], and the Boolean [a <?
-b], which is of type [bool] and is equal to [true] if and only if
+b], which is of type [bool] and equals to [true] if and only if
 (iff) [a < b].  We will use the (standard) theorem [Nat.ltb_lt], which
 states that [forall n m : nat, (n <? m) = true <-> n < m]. *)
 
