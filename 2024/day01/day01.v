@@ -43,7 +43,7 @@ otherwise. *)
 (** We would then like to know, given two numbers [a] and [b], whether
 [a < b] or not. We call that _deciding_ whether [a < b] or not, and,
 luckily for us, this property is decidable for every pair of numbers.
-We don't need to prove it: it is already done for us in the module
+We don't need to prove it: this is already done for us in the module
 [PeanoNat]. *)
 
 Require Import PeanoNat.
@@ -52,7 +52,7 @@ Definition distance (a b: nat): nat :=
   if a <? b then b - a else a - b.
 
 (** Note the distinction between [a < b], which is the _property_ (of
-type [Prop]), that _a_ is stricty less than _b_, and the Boolean [a <?
+type [Prop]), that [a] is stricty less than [b], and the Boolean [a <?
 b], which is of type [bool] and is equal to [true] if and only if
 (iff) [a < b].  We will use the (standard) theorem [Nat.ltb_lt], which
 states that [forall n m : nat, (n <? m) = true <-> n < m]. *)
