@@ -38,7 +38,7 @@ Require Import List.
 (** Part 1 asks us to consider the pairs of corresponding numbers
 from the two lists, where each list is considered in increasing order.
 For each pair of numbers in the same position
-in increasing order, we consider their _distance_ between the two numbers,
+in increasing order, we consider the _distance_ between the two numbers,
 defined as the absolute difference of the two numbers.
 The final answer for part 1 is the total distance, that is to say the
 sum of all these respective distances. *)
@@ -84,7 +84,7 @@ Require Import Sorted.
 (** The specification of part 1 is then as follows: a number [n] is a
 solution of [input] if there exist two lists [l1] and [l2] such that
 [combine l1 l2 = input], and there exists two increasingly-sorted
-permutations [sorted1] and [sorted2] (of [l1] and [l2] respectively],
+permutations [sorted1] and [sorted2] (of [l1] and [l2] respectively),
 such that [n] is the sum of the distances between respective pairs of
 numbers in the two sorted permutations (again, these pairs are
 constructed with [combine], and then the compution of distances
