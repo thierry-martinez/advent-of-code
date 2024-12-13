@@ -11,6 +11,13 @@ the problem of the Advent of Code 2024 event, day 1
 
 (** * A Formalization *)
 
+(** The formalization presented here is intentionally somewhat removed
+from the actual implementation. This approach aims to provide a more
+substantial proof and to maintain closer alignment with the problem’s
+informal statement where possible. Of course, there are many other
+possible formalizations. As an exercise, one could demonstrate that
+these alternatives are equivalent. *)
+
 (** ** Part 1 *)
 
 (** We take the liberty to omit the formalization of the parsing step.
