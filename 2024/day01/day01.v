@@ -18,6 +18,14 @@ informal statement where possible. Of course, there are many other
 possible formalizations. As an exercise, one could demonstrate that
 these alternatives are equivalent. *)
 
+(** One could even argue, for such a simple exercise, that the
+specification _is_ the implementation itself, though in that case,
+there would be nothing left to prove!  On the other hand, one might
+suggest for instance that the specification should not mandate which
+sorting algorithm to use.  Note that the current specification only
+asserts that the lists are sorted; it does not specify how this must
+be achieved. *)
+
 (** ** Part 1 *)
 
 (** We take the liberty to omit the formalization of the parsing step.
