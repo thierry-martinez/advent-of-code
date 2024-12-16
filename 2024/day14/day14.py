@@ -1,3 +1,4 @@
+import math
 import re
 import statistics
 import sys
@@ -15,70 +16,46 @@ height = 103
 #height = 7
 
 seconds = 100
-q0 = 0
-q1 = 0
-q2 = 0
-q3 = 0
+quadrants = [[0 for _ in range(2)] for _ in range(2)]
 mx = (width - 1) // 2
 my = (height - 1) // 2
 for px, py, vx, vy in robots:
     x = (px + seconds * vx) % width
     y = (py + seconds * vy) % height
-    if x < mx:
-        if y < my:
-            q0 += 1
-        elif y > my:
-            q1 += 1
-    elif x > mx:
-        if y < my:
-            q2 += 1
-        elif y > my:
-            q3 += 1
-print(f"Part 1: {q0 * q1 * q2 * q3}")
+    if x != mx and y != my:
+        quadrants[int(y < my)][int(x < mx)] += 1
+part1 = math.prod(n for q in quadrants for n in q)
+print(f"Part 1: {part1}")
 
-positions = [(x, y) for x, y, _, _ in robots]
-second = 0
-ox = None
-sx = None
-oy = None
-sy = None
-while sx is None or sy is None:
-    #print(second)
-    #for y in range(height):
-    #    line = ""
-    #    for x in range(width):
-    #        if (x, y) in positions:
-    #            line += "*"
-    #        else:
-    #            line += " "
-    #    print(line)
-    vx = statistics.variance([x for x, y in positions])
-    vy = statistics.variance([y for x, y in positions])
-    if vx < 700:
-        if sx is None:
-            if ox is None:
-                ox = second
-            else:
-                sx = second - ox
-    if vy < 700:
-        if sy is None:
-            if oy is None:
-                oy = second
-            else:
-                sy = second - oy
+xs = [x for x, _, _, _ in robots]
+min_var_x = statistics.variance(xs)
+min_var_x_index = 0
+for index in range(1, width):
     for i in range(len(robots)):
-        (x, y) = positions[i]
-        (_, _, vx, vy) = robots[i]
-        x = (x + vx) % width
-        y = (y + vy) % height
-        positions[i] = (x, y)
-    second += 1
+        (_, _, vx, _) = robots[i]
+        xs[i] = (xs[i] + vx) % width
+    var_x = statistics.variance(xs)
+    if var_x < min_var_x:
+        min_var_x = var_x
+        min_var_x_index = index
 
-if oy > ox:
-    step_x = (oy - ox) * pow(sx, sy - 2, mod=sy)
-    base_time = ox + step_x * sx
+ys = [y for _, y, _, _ in robots]
+min_var_y = statistics.variance(ys)
+min_var_y_index = 0
+for index in range(1, height):
+    for i in range(len(robots)):
+        (_, _, _, vy) = robots[i]
+        ys[i] = (ys[i] + vy) % height
+    var_y = statistics.variance(ys)
+    if var_y < min_var_y:
+        min_var_y = var_y
+        min_var_y_index = index
+
+if min_var_y_index > min_var_x_index:
+    step_x = (min_var_y_index - min_var_x_index) * pow(width, height - 2, mod=height)
+    base_time = min_var_x_index + step_x * width
 else:
-    step_y = (ox - oy) * pow(sy, sx - 2, mod=sx)
-    base_time = oy + step_y * sy
-time = base_time % (sx * sy)
+    step_y = (min_var_x_index - min_var_y_index) * pow(height, width - 2, mod=width)
+    base_time = min_var_y_index + step_y * height
+time = base_time % (width * height)
 print(f"Part 2: {time}")
