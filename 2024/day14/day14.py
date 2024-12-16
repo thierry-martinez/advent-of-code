@@ -27,35 +27,37 @@ for px, py, vx, vy in robots:
 part1 = math.prod(n for q in quadrants for n in q)
 print(f"Part 1: {part1}")
 
-xs = [x for x, _, _, _ in robots]
-min_var_x = statistics.variance(xs)
-min_var_x_index = 0
-for index in range(1, width):
-    for i in range(len(robots)):
-        (_, _, vx, _) = robots[i]
-        xs[i] = (xs[i] + vx) % width
-    var_x = statistics.variance(xs)
-    if var_x < min_var_x:
-        min_var_x = var_x
-        min_var_x_index = index
+def find_minimum_variance_index(positions, velocities, length):
+    def evolve():
+        for _ in range(length):
+            yield statistics.variance(positions)
+            for i in range(len(positions)):
+                positions[i] = (positions[i] + velocities[i]) % length
+    return min(enumerate(evolve()), key=lambda p: p[1])[0]
 
-ys = [y for _, y, _, _ in robots]
-min_var_y = statistics.variance(ys)
-min_var_y_index = 0
-for index in range(1, height):
-    for i in range(len(robots)):
-        (_, _, _, vy) = robots[i]
-        ys[i] = (ys[i] + vy) % height
-    var_y = statistics.variance(ys)
-    if var_y < min_var_y:
-        min_var_y = var_y
-        min_var_y_index = index
+# Looking for the frame that minimizes the variance.
 
-if min_var_y_index > min_var_x_index:
-    step_x = (min_var_y_index - min_var_x_index) * pow(width, height - 2, mod=height)
-    base_time = min_var_x_index + step_x * width
-else:
-    step_y = (min_var_x_index - min_var_y_index) * pow(height, width - 2, mod=width)
-    base_time = min_var_y_index + step_y * height
-time = base_time % (width * height)
-print(f"Part 2: {time}")
+# First, we look on each component.
+# (Note that the x-component is width-periodic and the y-component is height-periodic.)
+xmin = find_minimum_variance_index([px for px, py, vx, vy in robots], [vx for px, py, vx, vy in robots], width)
+ymin = find_minimum_variance_index([py for px, py, vx, vy in robots], [vy for px, py, vx, vy in robots], height)
+
+# The index [T] of the frame that minimizes the variance is such that
+# T = xmin + p * width = ymin + q * height
+# for p and q some integers,
+# and we look for the smallest such T, that is to say 0 <= T < width * height
+# (because the whole animation is (width * height)-periodic).
+# We will find a first solution by asserting q = 0 (for instance),
+# and then we will slide this solution to fit inside the window 0 <= T < width * height.
+# If q = 0, then we have xmin + p * width = ymin
+# p * width = ymin - xmin
+# We now need an inverse for width. Note that we only need an equation on p modulo height
+# because p * width will be modulo width * height. By Fermat's little theorem,
+# width' = width ^ (height - 2) mod height is an inverse of width modulo height.
+# Therefore,
+
+p = (ymin - xmin) * pow(width, height - 2, mod=height)
+t = xmin + p * width
+
+t = t % (width * height)
+print(f"Part 2: {t}")
