@@ -1,5 +1,5 @@
-//use anyhow::anyhow;
-use log;
+use anyhow::anyhow;
+//use log;
 
 use std::fs::File;
 use std::io::BufReader;
@@ -11,7 +11,7 @@ fn read_lines(path: &Path) -> std::io::Result<Vec<String>> {
     let reader = BufReader::new(file);
     reader.lines().collect()
 }
-/*
+
 enum Direction {
     L,
     R
@@ -28,12 +28,12 @@ impl TryFrom<char> for Direction {
         }
     }
 }
-*/
+
 enum Part {
     One,
     Two
 }
-/*
+
 fn problem1(path: &Path, part: Part) -> anyhow::Result<u16> {
     let lines = read_lines(path)?;
     let mut dial: u8 = 50;
@@ -64,7 +64,6 @@ fn problem1(path: &Path, part: Part) -> anyhow::Result<u16> {
     }
     Ok(count_zero)
 }
-*/
 
 fn problem2(path: &Path, part: Part) -> anyhow::Result<u64> {
     let lines = read_lines(path)?;
@@ -110,17 +109,66 @@ fn problem2(path: &Path, part: Part) -> anyhow::Result<u64> {
     Ok(sum)
 }
 
+fn nmax<Item>(iter: impl ExactSizeIterator<Item=Item>, n: usize) -> Vec<Item>
+where Item: std::cmp::Ord {
+    let mut result: Vec<Item> = Vec::new();
+    let mut remaining = iter.len();
+    for item in iter {
+        let mut lower = n.saturating_sub(remaining);
+        let mut upper = result.len();
+        while lower < upper {
+            let middle = lower.midpoint(upper);
+            let middle_item = &result[middle];
+            if middle_item < &item {
+                upper = middle;
+            }
+            else {
+                lower = middle + 1;
+            }
+        }
+        if lower < n {
+            result.truncate(lower);
+            result.push(item);
+        }
+        remaining -= 1;
+    }
+    result
+}
+
+fn problem3(path: &Path, part: Part) -> anyhow::Result<u64> {
+    let lines = read_lines(path)?;
+    let n =
+        match part {
+            Part::One => 2,
+            Part::Two => 12,
+        };
+    let joltages = lines.iter().map(|line| -> anyhow::Result<u64> {
+      let bank = line.chars().map(|char| -> anyhow::Result<u8> { Ok(char.to_string().parse()?) }).collect::<anyhow::Result<Vec<u8>>>()?;
+      let numbers = nmax(bank.iter().cloned(), n);
+      log::trace!("{bank:?} {numbers:?}");
+      Ok(numbers.into_iter().fold(0, |accu, digit| accu * 10 + digit as u64))
+    }).collect::<anyhow::Result<Vec<u64>>>()?;
+    Ok(joltages.iter().sum())
+}
+
 fn main() -> anyhow::Result<()> {
-    /*
+    env_logger::init();
+
     let answer = problem1(Path::new("../input/1/input"), Part::One)?;
     println!("Problem 1 part 1: {answer}");
     let answer = problem1(Path::new("../input/1/input"), Part::Two)?;
     println!("Problem 1 part 2: {answer}");
-     */
+
     let answer = problem2(Path::new("../input/2/input"), Part::One)?;
     println!("Problem 2 part 1: {answer}");
     let answer = problem2(Path::new("../input/2/input"), Part::Two)?;
     println!("Problem 2 part 2: {answer}");
+
+    let answer = problem3(Path::new("../input/3/input"), Part::One)?;
+    println!("Problem 3 part 1: {answer}");
+    let answer = problem3(Path::new("../input/3/input"), Part::Two)?;
+    println!("Problem 3 part 2: {answer}");
+
     Ok(())
 }
 
@@ -128,8 +176,7 @@ fn main() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-/*
-    use env_logger;
+
     fn test_problem1_part1() -> anyhow::Result<()> {
         let answer = problem1(Path::new("../input/1/example.txt"), Part::One)?;
         assert_eq!(answer, 3);
@@ -142,14 +189,26 @@ mod tests {
         assert_eq!(answer, 6);
         Ok(())
     }
-*/
+
     #[test]
     fn test_problem2() -> anyhow::Result<()> {
-        env_logger::init();
         let answer = problem2(Path::new("../input/2/example"), Part::One)?;
         assert_eq!(answer, 1227775554);
         let answer = problem2(Path::new("../input/2/example"), Part::Two)?;
         assert_eq!(answer, 4174379265);
+        Ok(())
+    }
+
+    #[test]
+    fn test_problem3() -> anyhow::Result<()> {
+        env_logger::init();
+
+        let answer = problem3(Path::new("../input/3/example"), Part::One)?;
+        assert_eq!(answer, 357);
+
+        let answer = problem3(Path::new("../input/3/example"), Part::Two)?;
+        assert_eq!(answer, 3121910778619);
+
         Ok(())
     }
 }
