@@ -210,60 +210,21 @@ fn problem5(path: &Path, part: Part) -> anyhow::Result<usize> {
             ingredients.into_iter().filter(|&ingredient| intervals.iter().any(|(low, high)| *low <= ingredient && ingredient <= *high)).count()
         }
         Part::Two => {
-            let mut sorted_intervals: Vec<(usize, usize)> = Vec::new();
+            let mut intervals = intervals;
+            intervals.sort_by_key(|(low, _high)| *low);
+            let mut count = 0;
+            let mut counted_up_to = 0;
             for (low, high) in intervals {
-                log::trace!("{low}-{high}");
-                let mut lower = 0;
-                let mut upper = sorted_intervals.len();
-                while lower < upper {
-                    let middle = lower.midpoint(upper);
-                    let (mlow, mhigh) = sorted_intervals[middle];
-                    if mhigh < low {
-                        lower = middle + 1;
-                    }
-                    else if high < mlow {
-                        upper = middle;
-                    }
-                    else {
-                        let start =
-                            if mlow <= low {
-                                middle
-                            }
-                            else {
-                                let mut start = middle;
-                                while let Some(prev) = start.checked_sub(1) && sorted_intervals[prev].1 >= low {
-                                    start = prev;
-                                };
-                                start
-                            };
-                        let end =
-                            if high <= mhigh {
-                                middle
-                            }
-                            else {
-                                let mut end = middle;
-                                while let Some((elow, _ehigh)) = sorted_intervals.get(end + 1) && *elow <= high {
-                                    end += 1;
-                                };
-                                end
-                            };
-                        if start == end {
-                            sorted_intervals[middle] = (std::cmp::min(low, mlow), std::cmp::max(high, mhigh));
-                        }
-                        else {
-                            let mlow = sorted_intervals[start].0;
-                            let mhigh = sorted_intervals[end].1;
-                            sorted_intervals.drain(start + 1..=end);
-                            sorted_intervals[start] = (std::cmp::min(low, mlow), std::cmp::max(high, mhigh));
-                        }
-                        break;
-                    }
+                if counted_up_to < low {
+                    count += high - low + 1;
+                    counted_up_to = high;
                 }
-                if lower >= upper {
-                    sorted_intervals.insert(lower, (low, high));
+                else if counted_up_to < high {
+                    count += high - counted_up_to;
+                    counted_up_to = high;
                 }
-            };
-            sorted_intervals.into_iter().map(|(low, high)| high - low + 1).sum()
+            }
+            count
         }
       };
     Ok(result)
