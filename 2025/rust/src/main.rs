@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-//use log;
+use log;
 
 use std::fs::File;
 use std::io::BufReader;
@@ -10,6 +10,11 @@ fn read_lines(path: &Path) -> std::io::Result<Vec<String>> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
     reader.lines().collect()
+}
+
+enum Part {
+    One,
+    Two
 }
 
 enum Direction {
@@ -27,11 +32,6 @@ impl TryFrom<char> for Direction {
             _ => Err(anyhow!("{c} is not a valid direction"))
         }
     }
-}
-
-enum Part {
-    One,
-    Two
 }
 
 fn problem1(path: &Path, part: Part) -> anyhow::Result<u16> {
@@ -151,8 +151,127 @@ fn problem3(path: &Path, part: Part) -> anyhow::Result<u64> {
     Ok(joltages.iter().sum())
 }
 
+fn problem4(path: &Path, part: Part) -> anyhow::Result<usize> {
+    let lines = read_lines(path)?;
+    let mut lines: Vec<Vec<char>> = lines.into_iter().map(|line| line.chars().collect()).collect();
+    let mut sum = 0;
+    loop {
+        let mut rolls = Vec::new();
+        for (y, line) in lines.iter().enumerate() {
+            for (x, char) in line.iter().enumerate() {
+                if *char != '@' {
+                    continue;
+                }
+                let mut roll_count = 0;
+                for sy in y.saturating_sub(1)..=y + 1 {
+                    let Some(line) = lines.get(sy) else { break };
+                    for sx in x.saturating_sub(1)..=x + 1 {
+                        if sy != y || sx != x {
+                            let Some(&char) = line.get(sx) else { break };
+                            if char == '@' {
+                                roll_count += 1;
+                            }
+                        }
+                    }
+                }
+                if roll_count < 4 {
+                    rolls.push((x, y));
+                }
+            }
+        }
+        sum += rolls.len();
+        match part {
+            Part::One => break,
+            Part::Two => {
+                if rolls.len() == 0 {
+                    break;
+                }
+                for (x, y) in rolls {
+                    lines[y][x] = '.';
+                }
+            }
+        }
+    }
+    Ok(sum)
+}
+
+fn problem5(path: &Path, part: Part) -> anyhow::Result<usize> {
+    let lines = read_lines(path)?;
+    let mut line_iter = lines.into_iter();
+    let intervals = line_iter.by_ref().take_while(|s| s != "").map(|s| -> anyhow::Result<(usize, usize)> {
+      let (low, high) = s.split_once('-').ok_or_else(|| anyhow!("Not an interval: {s}"))?;
+      Ok((low.parse()?, high.parse()?))
+    }).collect::<anyhow::Result<Vec<(usize, usize)>>>()?;
+    let result =
+      match part {
+        Part::One => {
+            let ingredients: Vec<usize> = line_iter.map(|s| -> anyhow::Result<usize> { Ok(s.parse()?) })
+                .collect::<anyhow::Result<Vec<usize>>>()?;
+            ingredients.into_iter().filter(|&ingredient| intervals.iter().any(|(low, high)| *low <= ingredient && ingredient <= *high)).count()
+        }
+        Part::Two => {
+            let mut sorted_intervals: Vec<(usize, usize)> = Vec::new();
+            for (low, high) in intervals {
+                log::trace!("{low}-{high}");
+                let mut lower = 0;
+                let mut upper = sorted_intervals.len();
+                while lower < upper {
+                    let middle = lower.midpoint(upper);
+                    let (mlow, mhigh) = sorted_intervals[middle];
+                    if mhigh < low {
+                        lower = middle + 1;
+                    }
+                    else if high < mlow {
+                        upper = middle;
+                    }
+                    else {
+                        let start =
+                            if mlow <= low {
+                                middle
+                            }
+                            else {
+                                let mut start = middle;
+                                while let Some(prev) = start.checked_sub(1) && sorted_intervals[prev].1 >= low {
+                                    start = prev;
+                                };
+                                start
+                            };
+                        let end =
+                            if high <= mhigh {
+                                middle
+                            }
+                            else {
+                                let mut end = middle;
+                                while let Some((elow, _ehigh)) = sorted_intervals.get(end + 1) && *elow <= high {
+                                    end += 1;
+                                };
+                                end
+                            };
+                        if start == end {
+                            sorted_intervals[middle] = (std::cmp::min(low, mlow), std::cmp::max(high, mhigh));
+                        }
+                        else {
+                            let mlow = sorted_intervals[start].0;
+                            let mhigh = sorted_intervals[end].1;
+                            sorted_intervals.drain(start + 1..=end);
+                            sorted_intervals[start] = (std::cmp::min(low, mlow), std::cmp::max(high, mhigh));
+                        }
+                        break;
+                    }
+                }
+                if lower >= upper {
+                    sorted_intervals.insert(lower, (low, high));
+                }
+            };
+            sorted_intervals.into_iter().map(|(low, high)| high - low + 1).sum()
+        }
+      };
+    Ok(result)
+}
+
 fn main() -> anyhow::Result<()> {
     env_logger::init();
+
 
     let answer = problem1(Path::new("../input/1/input"), Part::One)?;
     println!("Problem 1 part 1: {answer}");
@@ -169,6 +288,15 @@ fn main() -> anyhow::Result<()> {
     let answer = problem3(Path::new("../input/3/input"), Part::Two)?;
     println!("Problem 3 part 2: {answer}");
 
+    let answer = problem4(Path::new("../input/4/input"), Part::One)?;
+    println!("Problem 4 part 1: {answer}");
+    let answer = problem4(Path::new("../input/4/input"), Part::Two)?;
+    println!("Problem 4 part 2: {answer}");
+
+    let answer = problem5(Path::new("../input/5/input"), Part::One)?;
+    println!("Problem 5 part 1: {answer}");
+    let answer = problem5(Path::new("../input/5/input"), Part::Two)?;
+    println!("Problem 5 part 2: {answer}");
     Ok(())
 }
 
@@ -208,6 +336,32 @@ mod tests {
 
         let answer = problem3(Path::new("../input/3/example"), Part::Two)?;
         assert_eq!(answer, 3121910778619);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_problem4() -> anyhow::Result<()> {
+        env_logger::init();
+
+        let answer = problem4(Path::new("../input/4/example"), Part::One)?;
+        assert_eq!(answer, 13);
+
+        let answer = problem4(Path::new("../input/4/example"), Part::Two)?;
+        assert_eq!(answer, 43);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_problem5() -> anyhow::Result<()> {
+        env_logger::init();
+
+        let answer = problem5(Path::new("../input/5/example"), Part::One)?;
+        assert_eq!(answer, 3);
+
+        let answer = problem5(Path::new("../input/5/example"), Part::Two)?;
+        assert_eq!(answer, 14);
 
         Ok(())
     }
