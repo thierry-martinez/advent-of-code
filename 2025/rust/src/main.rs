@@ -5,6 +5,7 @@ use std::fs::File;
 use std::io::BufReader;
 use std::io::prelude::*;
 use std::path::Path;
+use std::collections::{HashMap, HashSet, hash_map::Entry};
 
 fn read_lines(path: &Path) -> std::io::Result<Vec<String>> {
     let file = File::open(path)?;
@@ -230,6 +231,146 @@ fn problem5(path: &Path, part: Part) -> anyhow::Result<usize> {
     Ok(result)
 }
 
+enum Operator {
+    Add,
+    Mul,
+}
+
+impl TryFrom<char> for Operator {
+    type Error = anyhow::Error;
+
+    fn try_from(c: char) -> Result<Self, Self::Error> {
+        if c == '+' {
+            Ok(Operator::Add)
+        }
+        else if c == '*' {
+            Ok(Operator::Mul)
+        }
+        else {
+            Err(anyhow!("Unknown operator: {c}"))
+        }
+    }
+}
+
+fn problem6(path: &Path, part: Part) -> anyhow::Result<u64> {
+    let lines = read_lines(path)?;
+    let problems: Vec<(Vec<u64>, Operator)> =
+        match part {
+            Part::One => {
+                let mut lines: Vec<_> = lines.into_iter()
+                    .map(
+                        |line|
+                        line.split_whitespace().map(|s| s.to_string()).collect::<Vec<String>>().into_iter()
+                    )
+                    .collect();
+                lines.pop().unwrap().map(|operator| -> anyhow::Result<(Vec<u64>, Operator)> {
+                  let values =
+                    lines.iter_mut()
+                        .map(|iter| -> anyhow::Result<u64> { Ok(iter.next().unwrap().parse()?) })
+                        .collect::<anyhow::Result<Vec<u64>>>()?;
+                  let operator = operator.chars().next().unwrap().try_into()?;
+                  Ok((values, operator))}
+                ).collect::<anyhow::Result<Vec<(Vec<u64>, Operator)>>>()?
+            }
+            Part::Two => {
+                let mut lines: Vec<_> = lines.into_iter()
+                    .map(|line| line.chars().collect::<Vec<char>>().into_iter())
+                    .collect();
+                let width = lines[0].len();
+                let columns: Vec<String> =
+                    (0..width).map(|_| {
+                        lines.iter_mut().map(|iter| iter.next().unwrap()).collect::<String>().trim().to_string()
+                    }).collect();
+                let mut problems: Vec<Vec<String>> = vec![];
+                let mut current_problem: Vec<String> = vec![];
+                for column in columns.into_iter().rev() {
+                    if column == "" {
+                        problems.push(current_problem);
+                        current_problem = vec![];
+                    }
+                    else {
+                        current_problem.push(column);
+                    }
+                }
+                problems.push(current_problem);
+                problems.into_iter().map(|mut columns| -> anyhow::Result<(Vec<u64>, Operator)> {
+                    let last_column = columns.pop().unwrap();
+                    let mut chars: Vec<char> = last_column.chars().collect();
+                    let operator: Operator = chars.pop().unwrap().try_into()?;
+                    let last_column: String = chars.iter().collect();
+                    columns.push(last_column.trim().to_string());
+                    let values = columns.into_iter().map(|s| -> anyhow::Result<u64> { Ok(s.parse()?) }).collect::<anyhow::Result<Vec<u64>>>()?;
+                    Ok((values, operator))
+                }).collect::<anyhow::Result<Vec<(Vec<u64>, Operator)>>>()?
+            }
+        };
+    let result: u64 = problems.into_iter().map(|(numbers, operator): (Vec<u64>, Operator)| -> u64 {
+      match operator {
+          Operator::Add => numbers.into_iter().sum(),
+          Operator::Mul => numbers.into_iter().product(),
+      }
+    }).sum();
+    Ok(result)
+}
+
+fn increment_timelines(map: &mut HashMap<usize, usize>, index: usize, count: usize) {
+    match map.entry(index) {
+        Entry::Occupied(mut entry) => {
+            *entry.get_mut() += count;
+        }
+        Entry::Vacant(entry) => {
+            entry.insert(count);
+        }
+    }
+}
+
+fn problem7(path: &Path, part: Part) -> anyhow::Result<usize> {
+    let lines = read_lines(path)?;
+    let mut line_iter = lines.iter();
+    let entry_point = line_iter.next().unwrap().find('S').unwrap();
+    let splitter_lines: Vec<HashSet<usize>> = line_iter.map(|line| line.match_indices('^').map(|m| m.0).collect::<HashSet<usize>>()).collect();
+    let result =
+        match part {
+            Part::One => {
+                let mut beams = HashSet::from([entry_point]);
+                let mut split_count = 0;
+                for splitters in splitter_lines {
+                    let mut new_beams = HashSet::new();
+                    for beam in beams {
+                        if splitters.contains(&beam) {
+                            new_beams.insert(beam - 1);
+                            new_beams.insert(beam + 1);
+                            split_count += 1;
+                        }
+                        else {
+                            new_beams.insert(beam);
+                        }
+                    }
+                    beams = new_beams;
+                }
+                split_count
+            }
+            Part::Two => {
+                let mut beams = HashMap::from([(entry_point, 1)]);
+                for splitters in splitter_lines {
+                    let mut new_beams = HashMap::new();
+                    for (beam, timeline_count) in beams {
+                        if splitters.contains(&beam) {
+                            increment_timelines(&mut new_beams, beam - 1, timeline_count);
+                            increment_timelines(&mut new_beams, beam + 1, timeline_count);
+                        }
+                        else {
+                            increment_timelines(&mut new_beams, beam, timeline_count);
+                        }
+                    }
+                    beams = new_beams;
+                }
+                beams.iter().map(|(_, count)| count).sum()
+            }
+        };
+    Ok(result)
+}
+
 fn main() -> anyhow::Result<()> {
     env_logger::init();
 
@@ -258,6 +399,17 @@ fn main() -> anyhow::Result<()> {
     println!("Problem 5 part 1: {answer}");
     let answer = problem5(Path::new("../input/5/input"), Part::Two)?;
     println!("Problem 5 part 2: {answer}");
+
+    let answer = problem6(Path::new("../input/6/input"), Part::One)?;
+    println!("Problem 6 part 1: {answer}");
+    let answer = problem6(Path::new("../input/6/input"), Part::Two)?;
+    println!("Problem 6 part 2: {answer}");
+
+    let answer = problem7(Path::new("../input/7/input"), Part::One)?;
+    println!("Problem 7 part 1: {answer}");
+    let answer = problem7(Path::new("../input/7/input"), Part::Two)?;
+    println!("Problem 7 part 2: {answer}");
+
     Ok(())
 }
 
@@ -266,6 +418,7 @@ fn main() -> anyhow::Result<()> {
 mod tests {
     use super::*;
 
+    #[test]
     fn test_problem1_part1() -> anyhow::Result<()> {
         let answer = problem1(Path::new("../input/1/example.txt"), Part::One)?;
         assert_eq!(answer, 3);
@@ -323,6 +476,32 @@ mod tests {
 
         let answer = problem5(Path::new("../input/5/example"), Part::Two)?;
         assert_eq!(answer, 14);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_problem6() -> anyhow::Result<()> {
+        env_logger::init();
+
+        let answer = problem6(Path::new("../input/6/example"), Part::One)?;
+        assert_eq!(answer, 4277556);
+
+        let answer = problem6(Path::new("../input/6/example"), Part::Two)?;
+        assert_eq!(answer, 3263827);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_problem7() -> anyhow::Result<()> {
+        env_logger::init();
+
+        let answer = problem7(Path::new("../input/7/example"), Part::One)?;
+        assert_eq!(answer, 21);
+
+        let answer = problem7(Path::new("../input/7/example"), Part::Two)?;
+        assert_eq!(answer, 40);
 
         Ok(())
     }
