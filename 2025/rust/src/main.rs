@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use good_lp::{self, SolverModel, Solution};
 use log;
 
 use std::collections::{HashMap, HashSet, hash_map::Entry};
@@ -527,9 +528,269 @@ fn problem8(path: &Path, nconnections: usize, part: Part) -> anyhow::Result<u64>
     }
 }
 
+struct Machine {
+    light_diagram: Vec<bool>,
+    buttons: Vec<Vec<u32>>,
+    joltages: Vec<u64>,
+}
+
+impl FromStr for Machine {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let words: Vec<String> = s.split(' ').map(|s| s.to_string()).collect();
+        let [light_diagram, .., joltage] = &words[..] else { return Err(anyhow!("No required items")); };
+        let buttons = &words[1..words.len() - 1];
+        let light_diagram: Vec<char> = light_diagram.chars().collect();
+        if light_diagram[0] != '[' || light_diagram[light_diagram.len() - 1] != ']' {
+            return Err(anyhow!("Syntax error for light diagram"));
+        }
+        let light_diagram: Vec<bool> = light_diagram[1..light_diagram.len() - 1].iter().map(|&c| -> anyhow::Result<bool> {
+            if c == '#' {
+                Ok(true)
+            }
+            else if c == '.' {
+                Ok(false)
+            }
+            else {
+                Err(anyhow!("Unexcepted character in light diagram {c}"))
+            }
+        }).collect::<anyhow::Result<_>>()?;
+        let buttons: Vec<Vec<u32>> = buttons.iter().map(|button| -> anyhow::Result<Vec<u32>>{
+            let button = (|| -> Option<_> {Some(button.strip_prefix('(')?.strip_suffix(')')?)})().ok_or_else(|| anyhow!("Syntax error for button"))?;
+            let indices: Vec<u32> = button.split(',').map(|index| -> anyhow::Result<u32> { Ok(index.parse()?) }).collect::<anyhow::Result<_>>()?;
+            Ok(indices)
+        }).collect::<anyhow::Result<_>>()?;
+        let joltage = (|| -> Option<_> {Some(joltage.strip_prefix('{')?.strip_suffix('}')?)})().ok_or_else(|| anyhow!("Syntax error for joltage"))?;
+        let joltages: Vec<u64> = joltage.split(',').map(|joltage| -> anyhow::Result<u64> { Ok(joltage.parse()?) }).collect::<anyhow::Result<_>>()?;
+        Ok(Machine { light_diagram, buttons, joltages })
+    }
+}
+
+fn u64_of_bitvector(items: impl Iterator<Item=bool>) -> Option<u64> {
+    let mut result: u64 = 0;
+    for item in items {
+        result = result.checked_shl(1)?;
+        if item {
+            result |= 1;
+        }
+    }
+    Some(result)
+}
+
+fn u64_of_bit_indices(items: impl Iterator<Item=u32>) -> Option<u64> {
+    let mut result: u64 = 0;
+    for item in items {
+        result |= 1u64.checked_shl(item)?;
+    }
+    Some(result)
+}
+
+fn problem10_part1(path: &Path) -> anyhow::Result<u64> {
+    let lines = read_lines(path)?;
+    let machines: Vec<Machine> = lines.into_iter().map(|line| -> anyhow::Result<Machine> { Ok(line.parse()?) }).collect::<anyhow::Result<_>>()?;
+    let counters: Vec<u64> = machines.into_iter().map(|machine| -> anyhow::Result<_> {
+        let target = u64_of_bitvector(machine.light_diagram.into_iter().rev()).ok_or_else(|| anyhow!("Out of bound"))?;
+        let buttons: Vec<u64> = machine.buttons.iter().map(|button| u64_of_bit_indices(button.into_iter().cloned())).collect::<Option<_>>().ok_or_else(|| anyhow!("Out of bounds"))?;
+        log::trace!("{target} {buttons:?}");
+        let mut reachable_set = HashSet::from([0]);
+        let mut new_reachable_vec = vec![0];
+        for count in 1.. {
+            let mut next_reachable_vec = vec![];
+            for reachable in new_reachable_vec {
+                for &button in &buttons {
+                    let result = reachable ^ button;
+                    if result == target {
+                        return Ok(count);
+                    }
+                    if reachable_set.insert(result) {
+                        next_reachable_vec.push(result);
+                    }
+                }
+            }
+            assert!(!next_reachable_vec.is_empty());
+            new_reachable_vec = next_reachable_vec;
+        }
+        Err(anyhow!("unreachable"))
+    }).collect::<anyhow::Result<_>>()?;
+    Ok(counters.into_iter().sum())
+}
+
+fn problem10_part2_check(buttons: &Vec<Vec<u32>>, joltages: &Vec<u64>, press_count: &Vec<u64>, sum: u64) {
+    assert_eq!(press_count.iter().cloned().sum::<u64>(), sum);
+    let mut total = vec![0; joltages.len()];
+    for (indices, count) in buttons.into_iter().zip(press_count.into_iter()) {
+        for &index in indices {
+            total[index as usize] += count;
+        }
+    }
+    for (total, &joltage) in total.into_iter().zip(joltages.into_iter()) {
+        assert_eq!(total, joltage);
+    }
+}
+
+fn problem10_part2(path: &Path) -> anyhow::Result<u64> {
+    let lines = read_lines(path)?;
+    let machines: Vec<Machine> = lines.into_iter().map(|line| -> anyhow::Result<Machine> { Ok(line.parse()?) }).collect::<anyhow::Result<_>>()?;
+    let press_counts: Vec<u64> = machines.into_iter().map(|machine| -> anyhow::Result<u64> {
+        let mut vars = good_lp::variables!();
+        let button_vars: Vec<_> = machine.buttons.iter().map(|button| (button, vars.add(good_lp::variable().integer().min(0)))).collect();
+        let sum_vars: good_lp::Expression = button_vars.iter().map(|(_button, var)| var).sum();
+        let mut prob = vars.minimise(&sum_vars).using(good_lp::default_solver);
+        for (index, &joltage) in machine.joltages.iter().enumerate() {
+            let mut sum: good_lp::Expression = 0.into();
+            for (indices, var) in &button_vars {
+                if indices.iter().any(|&index_| index == index_ as usize) {
+                    sum += var;
+                }
+            }
+            prob = prob.with(good_lp::constraint::eq::<good_lp::Expression, good_lp::Expression>(sum, (joltage as i32).into()));
+        }
+        let solution = prob.solve()?;
+        let sum = solution.eval(sum_vars) as u64;
+        let press_count: Vec<_> = button_vars.into_iter().map(|(_, var)| solution.value(var) as u64).collect();
+        problem10_part2_check(&machine.buttons, &machine.joltages, &press_count, sum);
+        Ok(sum)
+    }).collect::<Result<_, _>>()?;
+    Ok(press_counts.iter().sum())
+}
+
+struct Device {
+    name: String,
+    outputs: Vec<String>,
+}
+
+impl FromStr for Device {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (name, outputs) = s.split_once(": ").ok_or_else(|| anyhow!("No colon: {s}"))?;
+        let outputs: Vec<String> = outputs.split(" ").map(|s| s.to_string()).collect();
+        Ok(Self { name: name.to_string(), outputs })
+    }
+}
+
+fn compute_reachable<T>(map: &std::collections::HashMap<T, Vec<T>>, start: T) -> anyhow::Result<Vec<T>>
+where T: std::fmt::Display + Clone + Eq + std::hash::Hash {
+    let mut all_elements: Vec<T> = vec![start.clone()];
+    let mut new_elements: Vec<T> = vec![start];
+    let mut reachable: std::collections::HashSet<T> = new_elements.iter().cloned().collect();
+    while !new_elements.is_empty() {
+        let mut next_elements: Vec<T> = Vec::new();
+        for element in new_elements {
+            let Some(elements) = map.get(&element) else { continue };
+            for next_element in elements {
+                if !reachable.contains(next_element) {
+                    reachable.insert(next_element.clone());
+                    all_elements.push(next_element.clone());
+                    next_elements.push(next_element.clone());
+                }
+            }
+        }
+        new_elements = next_elements;
+    }
+    Ok(all_elements)
+}
+
+fn count_paths<T>(input_map: &std::collections::HashMap<T, Vec<T>>, sorted: &Vec<T>, src: T, tgt: T) -> anyhow::Result<u64>
+where T: std::fmt::Display + std::fmt::Debug + Clone + Eq + std::hash::Hash {
+    let mut path_count: std::collections::HashMap<T, u64> = [(src.clone(), 1)].into();
+    for element in sorted {
+        if path_count.contains_key(element) {
+            continue;
+        }
+        let Some(inputs) = input_map.get(&element) else { continue };
+        let previous_paths: Vec<u64> = inputs.iter().map(|previous_element| path_count.get(previous_element).cloned().unwrap_or(0)).collect();
+        let sum = previous_paths.into_iter().sum();
+        path_count.insert(element.clone(), sum);
+    }
+    let path_count = path_count.get(&tgt).ok_or_else(|| anyhow!("Element not found: {tgt}"))?.clone();
+    Ok(path_count)
+}
+
+fn problem11_part2(path: &Path) -> anyhow::Result<u64> {
+    let lines = read_lines(path)?;
+    let devices: Vec<Device> = lines.iter().map(|line| line.parse()).collect::<Result<_, _>>()?;
+    let device_map: std::collections::HashMap<String, Vec<String>> = devices.into_iter().map(|device| (device.name, device.outputs)).collect();
+    let reachable = compute_reachable(&device_map, "svr".to_string())?;
+    let mut input_map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    for element in &reachable {
+        let Some(elements) = device_map.get(element) else { continue };
+        for next_element in elements {
+            input_map.entry(next_element.clone()).or_insert_with(Vec::new).push(element.clone());
+        }
+    }
+    let mut sorted = vec!["svr".to_string()];
+    let mut added: std::collections::HashSet<String> = sorted.iter().cloned().collect();
+    while let Some(free) = reachable.iter().find(|element| {
+        if added.contains(element.clone()) { return false; };
+        let Some(inputs) = input_map.get(element.clone()) else { return true; };
+        inputs.iter().all(|element| added.contains(element))
+    }) {
+        sorted.push(free.clone());
+        added.insert(free.clone());
+    }
+    let fft_index = sorted.iter().position(|element| element == "fft");
+    let dac_index = sorted.iter().position(|element| element == "dac");
+    let result =
+        if fft_index < dac_index {
+            count_paths(&input_map, &sorted, "svr".to_string(), "fft".to_string())? * count_paths(&input_map, &sorted, "fft".to_string(), "dac".to_string())? * count_paths(&input_map, &sorted, "dac".to_string(), "out".to_string())?
+        }
+        else {
+            count_paths(&input_map, &sorted, "svr".to_string(), "dac".to_string())? * count_paths(&input_map, &sorted, "dac".to_string(), "fft".to_string())? * count_paths(&input_map, &sorted, "fft".to_string(), "out".to_string())?
+        };
+    Ok(result)
+}
+
+fn problem11_part1(path: &Path) -> anyhow::Result<u64> {
+    let lines = read_lines(path)?;
+    let devices: Vec<Device> = lines.iter().map(|line| line.parse()).collect::<Result<_, _>>()?;
+    let device_map: std::collections::HashMap<String, Vec<String>> = devices.into_iter().map(|device| (device.name, device.outputs)).collect();
+    let reachable = compute_reachable(&device_map, "you".to_string())?;
+    let mut input_map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    for element in &reachable {
+        let Some(elements) = device_map.get(element) else { continue };
+        for next_element in elements {
+            input_map.entry(next_element.clone()).or_insert_with(Vec::new).push(element.clone());
+        }
+    }
+    let mut sorted = vec!["you".to_string()];
+    let mut added: std::collections::HashSet<String> = sorted.iter().cloned().collect();
+    while let Some(free) = reachable.iter().find(|element| {
+        if added.contains(element.clone()) { return false; };
+        let Some(inputs) = input_map.get(element.clone()) else { return true; };
+        inputs.iter().all(|element| added.contains(element))
+    }) {
+        sorted.push(free.clone());
+        added.insert(free.clone());
+    }
+    let mut path_count: std::collections::HashMap<String, u64> = [("you".to_string(), 1)].into();
+    for element in sorted {
+        if element != "you" {
+            let previous_paths: Vec<u64> = input_map.get(&element).ok_or_else(|| anyhow!("Element not found: {element}"))?.iter().map(|previous_element| path_count.get(previous_element).ok_or_else(|| anyhow!("Element not found: {element}")).map(|x| x.clone())).collect::<Result<_, _>>()?;
+            path_count.insert(element.to_string(), previous_paths.into_iter().sum());
+        }
+    }
+    Ok(path_count.get("out").ok_or_else(|| anyhow!("Element not found: out"))?.clone())
+}
+
+fn problem12(path: &Path) -> anyhow::Result<usize> {
+    let lines = read_lines(path)?;
+    let regions: Vec<((u64, u64), Vec<u64>)> = lines.iter().filter_map(|line| -> Option<anyhow::Result<((u64, u64), Vec<u64>)>> {
+        let Some((format, quantities)) = line.split_once(": ") else { return None };
+        let Some((width, height)) = format.split_once("x") else { return None };
+        Some((|| -> anyhow::Result<((u64, u64), Vec<u64>)> {
+            let quantities: Vec<u64> = quantities.split(' ').map(|quantity| quantity.parse()).collect::<Result<_, _>>()?;
+            Ok(((width.parse()?, height.parse()?), quantities))
+        })())
+    }).collect::<Result<_, _>>()?;
+    Ok(regions.into_iter().filter(|((width, height), quantities)| 9 * quantities.iter().sum::<u64>() <= width * height).count())
+}
+
 fn main() -> anyhow::Result<()> {
     env_logger::init();
 
+/*
     let answer = problem1(Path::new("../input/1/input"), Part::One)?;
     println!("Problem 1 part 1: {answer}");
     let answer = problem1(Path::new("../input/1/input"), Part::Two)?;
@@ -569,6 +830,20 @@ fn main() -> anyhow::Result<()> {
     println!("Problem 8 part 1: {answer}");
     let answer = problem8(Path::new("../input/8/input"), 1000, Part::Two)?;
     println!("Problem 8 part 2: {answer}");
+
+    let answer = problem10_part1(Path::new("../input/10/input"))?;
+    println!("Problem 10 part 1: {answer}");
+    let answer = problem10_part2(Path::new("../input/10/input"))?;
+    println!("Problem 10 part 2: {answer}");
+*/
+    let answer = problem11_part1(Path::new("../input/11/input"))?;
+    println!("Problem 11 part 1: {answer}");
+    let answer = problem11_part2(Path::new("../input/11/input"))?;
+    println!("Problem 11 part 2: {answer}");
+
+
+    let answer = problem12(Path::new("../input/12/input"))?;
+    println!("Problem 12 part 1: {answer}");
     Ok(())
 }
 
@@ -673,6 +948,32 @@ mod tests {
 
         let answer = problem8(Path::new("../input/8/example"), 10, Part::Two)?;
         assert_eq!(answer, 25272);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_problem10() -> anyhow::Result<()> {
+        env_logger::init();
+
+        let answer = problem10_part1(Path::new("../input/10/example"))?;
+        assert_eq!(answer, 7);
+
+        let answer = problem10_part2(Path::new("../input/10/example"))?;
+        assert_eq!(answer, 33);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_problem11() -> anyhow::Result<()> {
+        env_logger::init();
+
+        let answer = problem11_part1(Path::new("../input/11/example"))?;
+        assert_eq!(answer, 5);
+
+        let answer = problem11_part2(Path::new("../input/11/example2"))?;
+        assert_eq!(answer, 2);
 
         Ok(())
     }
